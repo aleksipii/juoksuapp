@@ -43,13 +43,19 @@ DATA_FILE = f"data_{username}.csv"
 # DATA
 # ==================
 if os.path.exists(DATA_FILE):
-    df = pd.read_csv(DATA_FILE, parse_dates=["Päivä"])
+    df = pd.read_csv(DATA_FILE)
 else:
-    df = pd.DataFrame(columns=["Päivä", "Kilometrit", "Kommentti"])
-# 🔴 TÄRKEÄ: pakotetaan Päivä datetimeksi
+    df = pd.DataFrame(columns=["ID", "Päivä", "Kilometrit", "Kommentti"])
+
+# pakotetaan oikeat tyypit
 if not df.empty:
     df["Päivä"] = pd.to_datetime(df["Päivä"], errors="coerce")
     df = df.dropna(subset=["Päivä"])
+
+# varmista ID
+if "ID" not in df.columns:
+    df["ID"] = range(len(df))
+
 # ==================
 # LISÄÄ JUOKSU
 # ==================
@@ -62,13 +68,39 @@ with st.form("run_form"):
     submit = st.form_submit_button("Tallenna")
 
     if submit:
-        df = pd.concat([df, pd.DataFrame([{
+        new_row = pd.DataFrame([{
+            "ID": datetime.now().timestamp(),
             "Päivä": päivä,
             "Kilometrit": kilometrit,
             "Kommentti": kommentti
-        }])], ignore_index=True)
+        }])
+        df = pd.concat([df, new_row], ignore_index=True)
         df.to_csv(DATA_FILE, index=False)
         st.success("Tallennettu!")
+        st.experimental_rerun()
+
+# ==================
+# POISTA JUOKSU
+# ==================
+st.subheader("🗑️ Poista juoksu")
+
+if not df.empty:
+    delete_id = st.selectbox(
+        "Valitse poistettava juoksu",
+        df["ID"],
+        format_func=lambda x: (
+            f"{df.loc[df['ID'] == x, 'Päivä'].dt.strftime('%d.%m.%Y').values[0]} – "
+            f"{df.loc[df['ID'] == x, 'Kilometrit'].values[0]} km"
+        )
+    )
+
+    if st.button("❌ Poista valittu juoksu"):
+        df = df[df["ID"] != delete_id]
+        df.to_csv(DATA_FILE, index=False)
+        st.success("Juoksu poistettu")
+        st.experimental_rerun()
+else:
+    st.info("Ei poistettavia juoksuja.")
 
 # ==================
 # DASHBOARD
@@ -82,14 +114,21 @@ if not df.empty:
     # 🎯 Kokonaistavoite
     st.subheader("🎯 Kesän kokonaistavoite")
     st.progress(min(total_km / KOKONAISTAVOITE, 1.0))
-    st.metric("Juostu", f"{total_km:.1f} km",
-              f"{KOKONAISTAVOITE - total_km:.1f} km jäljellä")
+    st.metric(
+        "Juostu",
+        f"{total_km:.1f} km",
+        f"{KOKONAISTAVOITE - total_km:.1f} km jäljellä"
+    )
 
     # 🏆 Viikkoputki
     st.subheader("🏆 Viikkoputki")
 
-    weekly = df.groupby(["Vuosi", "Viikko"])["Kilometrit"].sum().reset_index()
-    weekly = weekly.sort_values(["Vuosi", "Viikko"])
+    weekly = (
+        df.groupby(["Vuosi", "Viikko"])["Kilometrit"]
+        .sum()
+        .reset_index()
+        .sort_values(["Vuosi", "Viikko"])
+    )
 
     streak = 0
     max_streak = 0
@@ -124,20 +163,29 @@ if not df.empty:
     else:
         prediction = "Ei vielä ennustettavissa"
 
-    st.metric("600 km saavutetaan arviolta", prediction,
-              f"{avg_km_week:.1f} km / viikko")
+    st.metric(
+        "600 km saavutetaan arviolta",
+        prediction,
+        f"{avg_km_week:.1f} km / viikko"
+    )
 
     # 📅 Viikkotavoite
     st.subheader("📅 Viikkotavoite")
+
     current_week = datetime.today().isocalendar()[1]
     weekly_km = df[df["Viikko"] == current_week]["Kilometrit"].sum()
+
     st.progress(min(weekly_km / VIIKKOTAVOITE, 1.0))
-    st.metric("Tämä viikko", f"{weekly_km:.1f} km",
-              f"Tavoite {VIIKKOTAVOITE} km")
+    st.metric(
+        "Tämä viikko",
+        f"{weekly_km:.1f} km",
+        f"Tavoite {VIIKKOTAVOITE} km"
+    )
 
     # 🏅 Saavutukset
     st.subheader("🏅 Saavutukset")
-    for name, km in [("Pronssi",100),("Hopea",300),("Kulta",600)]:
+
+    for name, km in [("Pronssi", 100), ("Hopea", 300), ("Kulta", 600)]:
         if total_km >= km:
             st.success(f"✅ {name} ({km} km)")
         else:
@@ -146,10 +194,10 @@ if not df.empty:
     # 📈 Ennuste-graafi
     st.subheader("📈 Oma tahti vs tavoite")
 
-    df = df.sort_values("Päivä")
-    df["Kumulatiivinen"] = df["Kilometrit"].cumsum()
+    df_sorted = df.sort_values("Päivä").copy()
+    df_sorted["Kumulatiivinen"] = df_sorted["Kilometrit"].cumsum()
 
-    start = df["Päivä"].min()
+    start = df_sorted["Päivä"].min()
     end = start + timedelta(days=120)
     days = (end - start).days
 
@@ -157,15 +205,17 @@ if not df.empty:
     target_km = [KOKONAISTAVOITE * (i / days) for i in range(len(target_dates))]
 
     fig, ax = plt.subplots()
-    ax.plot(df["Päivä"], df["Kumulatiivinen"], label="Sinä")
+    ax.plot(df_sorted["Päivä"], df_sorted["Kumulatiivinen"], label="Sinä")
     ax.plot(target_dates, target_km, "--", label="Tavoitevauhti")
     ax.axhline(KOKONAISTAVOITE)
     ax.legend()
+    ax.set_xlabel("Päivä")
+    ax.set_ylabel("Kilometrit")
     st.pyplot(fig)
 
     # 📋 Historia
     st.subheader("📋 Juoksuhistoria")
-    st.dataframe(df[["Päivä", "Kilometrit", "Kommentti"]])
+    st.dataframe(df_sorted[["Päivä", "Kilometrit", "Kommentti"]])
 
 else:
     st.info("Lisää ensimmäinen juoksu.")
