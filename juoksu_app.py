@@ -46,7 +46,10 @@ if os.path.exists(DATA_FILE):
     df = pd.read_csv(DATA_FILE, parse_dates=["Päivä"])
 else:
     df = pd.DataFrame(columns=["Päivä", "Kilometrit", "Kommentti"])
-
+# 🔴 TÄRKEÄ: pakotetaan Päivä datetimeksi
+if not df.empty:
+    df["Päivä"] = pd.to_datetime(df["Päivä"], errors="coerce")
+    df = df.dropna(subset=["Päivä"])
 # ==================
 # LISÄÄ JUOKSU
 # ==================
