@@ -68,68 +68,65 @@ if not df.empty:
     df["Vuosi"] = df["Päivä"].dt.year
 
     total_km = df["Kilometrit"].sum()
-    prosentti = min(total_km / KOKONAISTAVOITE, 1.0)
 
+    # 🎯 Kokonaistavoite
     st.subheader("🎯 Kesän kokonaistavoite")
-    st.progress(prosentti)
+    st.progress(min(total_km / KOKONAISTAVOITE, 1.0))
     st.metric("Juostu", f"{total_km:.1f} km", f"{KOKONAISTAVOITE-total_km:.1f} km jäljellä")
-# ------------------
-# VIIKKOPUTKI
-# ------------------
-st.subheader("🏆 Viikkoputki")
 
-weekly_summary = df.groupby(["Vuosi", "Viikko"])["Kilometrit"].sum().reset_index()
-weekly_summary = weekly_summary.sort_values(["Vuosi", "Viikko"])
+    # 🏆 Viikkoputki
+    st.subheader("🏆 Viikkoputki")
 
-streak = 0
-max_streak = 0
+    weekly_summary = (
+        df.groupby(["Vuosi", "Viikko"])["Kilometrit"]
+        .sum()
+        .reset_index()
+        .sort_values(["Vuosi", "Viikko"])
+    )
 
-for km in weekly_summary["Kilometrit"]:
-    if km > 0:
-        streak += 1
-        max_streak = max(max_streak, streak)
-    else:
-        streak = 0
+    streak = 0
+    max_streak = 0
 
-st.metric("Nykyinen putki", f"{streak} viikkoa")
-st.metric("Pisimmän putken ennätys", f"{max_streak} viikkoa")
+    for km in weekly_summary["Kilometrit"]:
+        if km > 0:
+            streak += 1
+            max_streak = max(max_streak, streak)
+        else:
+            streak = 0
 
-    # ------------------
-    # VIIKKOTAHTI + ENNUSTE
-    # ------------------
+    st.metric("Nykyinen putki", f"{streak} viikkoa")
+    st.metric("Pisimmän putken ennätys", f"{max_streak} viikkoa")
+
+    # 🔮 Ennuste
+    st.subheader("🔮 Ennuste")
+
     first_day = df["Päivä"].min()
     days_running = (datetime.today() - first_day).days + 1
     avg_km_per_day = total_km / max(days_running, 1)
     avg_km_per_week = avg_km_per_day * 7
 
-    if avg_km_per_week > 0:
+    if avg_km_per_day > 0:
         days_to_goal = (KOKONAISTAVOITE - total_km) / avg_km_per_day
         predicted_date = datetime.today() + timedelta(days=days_to_goal)
         prediction_text = predicted_date.strftime("%d.%m.%Y")
     else:
         prediction_text = "Ei vielä ennustettavissa"
 
-    st.subheader("🔮 Ennuste")
     st.metric(
         "Arvioitu 600 km saavutuspäivä",
         prediction_text,
         f"{avg_km_per_week:.1f} km / viikko"
     )
 
-    # ------------------
-    # VIIKKOTAVOITE
-    # ------------------
+    # 📅 Viikkotavoite
+    st.subheader("📅 Viikkotavoite")
+
     current_week = datetime.today().isocalendar()[1]
     weekly_km = df[df["Viikko"] == current_week]["Kilometrit"].sum()
-    weekly_pct = min(weekly_km / VIIKKOTAVOITE, 1.0)
-
-    st.subheader("📅 Viikkotavoite")
-    st.progress(weekly_pct)
+    st.progress(min(weekly_km / VIIKKOTAVOITE, 1.0))
     st.metric("Tämä viikko", f"{weekly_km:.1f} km", f"Tavoite {VIIKKOTAVOITE} km")
 
-    # ------------------
-    # SAAVUTUKSET
-    # ------------------
+    # 🏅 Saavutukset
     st.subheader("🏅 Saavutukset")
 
     def achievement(name, threshold):
@@ -142,37 +139,29 @@ st.metric("Pisimmän putken ennätys", f"{max_streak} viikkoa")
     achievement("Hopea", 300)
     achievement("Kulta", 600)
 
-    # ------------------
-# ENNUSTE-GRAAFI
-# ------------------
-st.subheader("🔮 Ennuste: oma tahti vs tavoite")
+    # 📈 Ennuste-graafi
+    st.subheader("📈 Ennuste: oma tahti vs tavoite")
 
-df_sorted = df.sort_values("Päivä")
-df_sorted["Kumulatiivinen"] = df_sorted["Kilometrit"].cumsum()
+    df_sorted = df.sort_values("Päivä")
+    df_sorted["Kumulatiivinen"] = df_sorted["Kilometrit"].cumsum()
 
-start_date = df_sorted["Päivä"].min()
-end_date = start_date + timedelta(days=120)  # ~touko–elo
-total_days = (end_date - start_date).days
+    start_date = df_sorted["Päivä"].min()
+    end_date = start_date + timedelta(days=120)
+    total_days = (end_date - start_date).days
 
-target_dates = pd.date_range(start_date, end_date)
-target_km = [
-    KOKONAISTAVOITE * (i / total_days)
-    for i in range(len(target_dates))
-]
+    target_dates = pd.date_range(start_date, end_date)
+    target_km = [KOKONAISTAVOITE * (i / total_days) for i in range(len(target_dates))]
 
-fig, ax = plt.subplots()
-ax.plot(df_sorted["Päivä"], df_sorted["Kumulatiivinen"], label="Sinun kehitys")
-ax.plot(target_dates, target_km, linestyle="--", label="Tavoitevauhti")
-ax.axhline(KOKONAISTAVOITE)
-ax.legend()
-ax.set_xlabel("Päivä")
-ax.set_ylabel("Km")
+    fig, ax = plt.subplots()
+    ax.plot(df_sorted["Päivä"], df_sorted["Kumulatiivinen"], label="Sinun kehitys")
+    ax.plot(target_dates, target_km, linestyle="--", label="Tavoitevauhti")
+    ax.axhline(KOKONAISTAVOITE)
+    ax.legend()
+    ax.set_xlabel("Päivä")
+    ax.set_ylabel("Km")
+    st.pyplot(fig)
 
-st.pyplot(fig)
-
-    # ------------------
-    # HISTORIA
-    # ------------------
+    # 📋 Historia
     st.subheader("📋 Juoksuhistoria")
     st.dataframe(df_sorted[["Päivä", "Kilometrit", "Kommentti"]])
 
