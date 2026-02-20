@@ -59,7 +59,7 @@ if "ID" not in df.columns:
 # ==================
 # LISÄÄ JUOKSU
 # ==================
-st.subheader("➕ Lisää juoksu")
+st.subheader("Lisää juoksu")
 
 with st.form("run_form"):
     päivä = st.date_input("Päivä", datetime.today())
